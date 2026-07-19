@@ -1,6 +1,8 @@
+#Fixed bug of being able to be inside the enemies
+
 extends CharacterBody2D
 
-#Fixed bug of being able to be inside the enemies
+
 
 const SPEED = 595.0
 const JUMP_VELOCITY = -600.0
