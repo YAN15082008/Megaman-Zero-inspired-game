@@ -1,4 +1,4 @@
-#Added knockbackand white flashes when hit, and  a hp life system
+#Added knockback and white flashes when hit, and  a hp life system
 
 extends CharacterBody2D
 
