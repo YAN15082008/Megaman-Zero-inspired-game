@@ -1,4 +1,4 @@
-#Added knockbac,white flashes and life system
+#Added knockback,white flashes and life system
 
 extends CharacterBody2D
 
