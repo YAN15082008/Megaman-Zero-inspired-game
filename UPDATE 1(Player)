@@ -1,3 +1,5 @@
+#Fixed bug of able to be inside the enemies
+
 extends CharacterBody2D
 
 
