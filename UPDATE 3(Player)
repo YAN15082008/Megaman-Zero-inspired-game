@@ -1,3 +1,5 @@
+#Made the dash less slippery
+
 extends CharacterBody2D
 
 
@@ -155,6 +157,6 @@ func flash_white() -> void:
 	tween.tween_property(sprite, "modulate", Color.WHITE, 0.12)
 	
 
-#Made the dash less slippery
+
 		
 		
