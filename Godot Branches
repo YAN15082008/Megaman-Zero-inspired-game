@@ -1,0 +1,41 @@
+#Godot Branches
+
+#Player
+🏃 player (CharacterBody2D)[Has script📄]
+  🟦 AnimatedSprite2D
+  ⬜ Colission shape (CollisionShape2D)
+🎯 Hitbox (Area2D) [alligned with group "scythe"]
+  ⬜ Colission shape (CollisionShape2D)
+⏳ Dashtimer (Timer)
+🎬 AnimationPlayer
+⬇️ Ray_right (RayCast2D)
+⬇️ Ray_left (RayCast2D)
+🎯 Hurtbox (Area2D)
+  ⬜ Hurtbox (CollisionShape2D) [alligned with group "Hurtboxes"]
+
+
+
+
+#Enemy
+
+⭕ Inimigo (Node2D - Nó raiz da cena)
+🏃 inimigo (CharacterBody2D)
+  🎯 Hurtbox (Area2D - Has script📄)
+    🟦 AnimatedSprite2D   
+        ⬜ hurtbox (CollisionShape2D)
+🎯 Area2D (Area2D - Has script📄) [alligned with group "Inimigos"]
+  ⬜ Hitbox (CollisionShape2D)
+
+#Walls, ceilings, floors
+
+🧱 StaticBody2D 
+  🖼️ Sprite2D 
+  ⬜ CollisionShape2D 
+
+#Groups: Hurtbox, scythe, Inimigos
+
+#Objectives:
+Make an sort of Megaman zero
+Have an  beginning and end cutscene
+3 stages
+3 different enemies
