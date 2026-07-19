@@ -1,4 +1,4 @@
-
+#Added knockbac,white flashes and life system
 
 extends CharacterBody2D
 
@@ -161,4 +161,4 @@ func flash_white() -> void:
 	
 		
 		
-#Added knockback and white flashes and life system
+
