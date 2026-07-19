@@ -1,5 +1,15 @@
 #Godot Branches
 
+#Main scene
+🌌 megaman zero de pobre (Node2D - Main branch)
+📁 Parede e chão (Node2D)
+  🧱 StaticBody2D 
+  🧱 StaticBody2D 
+🏃 Player (CharacterBody2D - Has script📄)
+  🎥Camera2D
+⭕ Inimigo 
+⭕ Inimigo2 
+
 #Player
 🏃 player (CharacterBody2D)[Has script📄]
   🟦 AnimatedSprite2D
