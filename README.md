@@ -2,6 +2,8 @@ An sort of Megaman Zero fan game/Original game on Godot engine
 
 First serious game that isn't tetris or flappy bird from me, still an beginner
 
+This is the first version now
+
 Right now, the project has this:
 
 Player: can move, dash and double jump. Squishes and stretches on impact along with a little sprite dust. Animated Sprites.
