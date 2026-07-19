@@ -159,4 +159,4 @@ func flash_white() -> void:
 	
 		
 		
-#Added knockback and white flashes
+#Added knockback and white flashes and life system
