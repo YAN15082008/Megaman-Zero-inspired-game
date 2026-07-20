@@ -25,6 +25,8 @@ Air dash and pogo correctly reset after landing.
 the only thing that Megaman X/Zero handles with physics is the momentum on the dash lol, which i added right after. 
 Tested Megaman Zero 2 on a emulator to see if it was accurate, and yep, nothing of deceleration. 
 So i started adding things that were missing and removing some that weren't really needed in the first place lmao.
+The only thing missing is the immediate snap when dash jumping on the opposite direction like in the X/Zero games, still don't know how to do it and probably will never know. 
+But even if the game doesn't have it, the game is now pretty of fun now!
 
 
 
