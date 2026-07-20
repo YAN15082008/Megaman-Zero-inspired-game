@@ -1,0 +1,64 @@
+#I forgot to update the enemy lol, basically the enemy has an hp, flashes white when hit, knockbacks the player and  has an adjustable hp variable.
+
+#What i plan to add in the future: Make an different one that follows the player, make one that shoots heavy cannonballs.
+
+extends Area2D
+
+var dead = false
+
+@onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var  enemy_body: Node2D = get_parent()
+@onready var hitbox: CollisionShape2D = $"../Area2D/Hitbox"
+@export var max_hp := 30
+var hp := max_hp
+@onready var attack_hitbox: Area2D = $"../Area2D"
+
+	
+func take_damage(damage: int) -> void:
+	hp -= damage
+	flash_white()
+
+	if hp <= 0:
+		dead = true
+		enemy_body.queue_free()
+
+func _ready() -> void:
+	hp = max_hp
+	if sprite.material != null:
+		sprite.material = sprite.material.duplicate()
+
+func _process(delta):
+	if dead == false:
+		sprite.play("enemy")
+		
+func _on_area_entered(area: Area2D) -> void:
+	if area.is_in_group("scythe"):
+		var damage := int(area.get_meta("damage", 10))
+		take_damage(damage)
+		
+	if hp <= 0:
+		dead = true
+		sprite.play("explosao")
+
+	
+func flash_white() -> void:
+	var shader_material := sprite.material as ShaderMaterial
+
+	if shader_material == null:
+		return
+
+	shader_material.set_shader_parameter("flash_white", true)
+	await get_tree().create_timer(0.12).timeout
+	shader_material.set_shader_parameter("flash_white", false)
+
+	await get_tree().create_timer(0.12).timeout
+
+	if is_instance_valid(sprite):
+		shader_material.set_shader_parameter("flash_white", false)
+	
+func _on_animated_sprite_2d_animation_finished() -> void:
+	if sprite.animation == "explosao":
+		$"../Area2D/Hitbox".disabled = true
+		queue_free()
+		
+		
