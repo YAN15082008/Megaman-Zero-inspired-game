@@ -2,9 +2,37 @@ extends CharacterBody2D
 
 
 
-#There is a lot that i put in here, so i am gonna have to check this one out yet.
+#I added many things:
+
+#Physics:Better coyote time,Improved Gravity,Variable jump height.
+
+#Dash overhaul:Ground dash improvements,	Air dash, 	Dash jump, 	Dash Afterimages, Dash squash & stretch
+
+#Combat: Combo attacks, hitstops, pogo attack( Cause i thought it was fun lol), Dash cancels attacks, Knockback
+
+#Animation improvements: dedicated pogo animation,	dash stretching, dash afterimages,	improved animation selection.
+
+#Bug fixes: Better coyote time implementation, 
+Dash no longer depends solely on a timer,	
+Dash direction can't accidentally change mid-dash, 
+Landing properly resets dash resources, 	
+Pogo prevents taking damage from the enemy you're bouncing on.
+Dash state is more cleanly managed.
+Jump logic is more organized.
+Air dash and pogo correctly reset after landing.
+
+#Removed: Acceleration and deceleration, i confused the mechanics with Mario, so i removed them.
+the only thing that Megaman X/Zero handles with physics is the momentum on the dash lol, which i added right after. 
+Tested Megaman Zero 2 on a emulator to see if it was accurate, and yep, nothing of deceleration. 
+So i started adding things that were missing and removing some that weren't really needed in the first place lmao.
+
+
 
 #Flips the sprite when walking left
+
+
+
+
 
 const SPEED = 500.0
 const JUMP_VELOCITY = -600.0
