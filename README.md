@@ -6,7 +6,7 @@ This is the first version now
 
 Right now, the project has this:
 
-Player: can move,attack, dash and double jump. Squishes and stretches on impact along with a little sprite dust. 
+Player: can move,attack, dash and double jump. Squishes and stretches on impact along with a little sprite dust and combo slashes.
 Animated Sprites.
 Has an HP life system.
 Flashes white when hit.
@@ -17,7 +17,7 @@ Enemy 1: knocksback the player and decreases the HP, explodes when hit.
 To do yet: 
 Refine the animations.
 wall jump 
-Combo slashes
+
 
 to do later:
 Story
