@@ -27,7 +27,7 @@ new scripts to add on enemies.
 add a new brand character with different moves.
 refine the gameplay.
 
-To see the updates on the enemies, player and etc... Check the branches/tags.
+To see more updates on the enemies, player and etc... Check the branches/tags.
 
 <img width="999" height="646" alt="Captura de tela 2026-07-18 231603" src="https://github.com/user-attachments/assets/df423b15-65ee-41ba-ad84-c7f511cbc0d3" />
 <img width="935" height="561" alt="Captura de tela 2026-07-18 231552" src="https://github.com/user-attachments/assets/bf11281e-85d6-4cf2-bb94-1b6363fb7551" />
