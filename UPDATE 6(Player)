@@ -6,11 +6,11 @@ extends CharacterBody2D
 
 #Physics:Better coyote time,Improved Gravity,Variable jump height.
 
-#Dash overhaul:Ground dash improvements,	Air dash, 	Dash jump, 	Dash Afterimages, Dash squash & stretch
+#Dash overhaul:Ground dash improvements, Air dash, Dash jump, Dash Afterimages, Dash squash & stretch
 
 #Combat: Combo attacks, hitstops, pogo attack( Cause i thought it was fun lol), Dash cancels attacks, Knockback
 
-#Animation improvements: dedicated pogo animation,	dash stretching, dash afterimages,	improved animation selection.
+#Animation improvements: dedicated pogo animation,	dash stretching, dash afterimages, improved animation selection.
 
 #Bug fixes: Better coyote time implementation, 
 Dash no longer depends solely on a timer,	
