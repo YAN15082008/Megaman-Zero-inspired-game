@@ -1,0 +1,31 @@
+#Makes the player stronger
+
+extends Area2D
+class_name StrengthPickup
+
+## Pickup item that permanently increases the player's damage_multiplier.
+## Place in any level scene — player collects it on contact.
+
+@export var strength_bonus := 0.5  # how much to add to damage_multiplier (default: +50%)
+
+func _ready() -> void:
+	body_entered.connect(_on_body_entered)
+	area_entered.connect(_on_area_entered)
+
+func _on_body_entered(body: Node2D) -> void:
+	_pick_up(body)
+
+func _on_area_entered(area: Area2D) -> void:
+	_pick_up(area.get_parent())
+
+func _pick_up(node: Node) -> void:
+	if not node.is_in_group("player"):
+		return
+
+	var player := node
+	if not "damage_multiplier" in player:
+		return
+
+	player.damage_multiplier += strength_bonus
+	print("STRENGTH UP! Damage multiplier is now: ", player.damage_multiplier)
+	queue_free()
