@@ -1,0 +1,132 @@
+#This enemy follows the player slowly, puts an bomb, and runs away.
+
+extends CharacterBody2D
+
+const GRAVITY        := 1200.0
+const MAX_FALL_SPEED := 800.0
+var is_being_knocked := false
+var _knockback_tween : Tween
+
+@export var approach_speed := 100.0    # speed when walking toward the player
+@export var flee_speed     := 200.0   # speed when running away after planting
+@export var bomb_range     := 150.0   # plant a bomb when closer than this
+@export var flee_duration  := 5       # seconds to run away after planting
+@export var bomb_cooldown  := 2.0     # cooldown before planting again
+@export var contact_damage := 0       # bomber doesn't deal contact damage (bomb does)
+@export var max_hp := 25
+
+const BOMB_SCENE := preload("res://CENAS/Inimigo/Tipos/Bomba/bomb.tscn")
+
+@onready var _sprite : AnimatedSprite2D = $Hurtbox/AnimatedSprite2D
+
+var _player    : Node2D
+var _can_bomb  := true
+var _fleeing   := false   # true while running away after planting
+
+
+func _ready() -> void:
+	# Bomber body-contact does NOT damage the player — only the bomb does.
+	if contact_damage > 0:
+		var area := get_node_or_null("Area2D")
+		if area != null:
+			area.add_to_group("inimigos")
+			area.set_meta("contact_damage", contact_damage)
+	# Sync max_hp to the hurtbox
+	var hurt: Node = get_node_or_null("Hurtbox")
+	if hurt != null:
+		hurt.max_hp = max_hp
+		hurt.hp = max_hp
+
+
+func _find_player() -> Node2D:
+	if not is_instance_valid(_player):
+		_player = get_tree().get_first_node_in_group("player")
+	return _player
+
+
+func _physics_process(delta: float) -> void:
+	if is_being_knocked:
+		return
+
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+		velocity.y = minf(velocity.y, MAX_FALL_SPEED)
+
+	var player := _find_player()
+	if not is_instance_valid(player):
+		velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
+		move_and_slide()
+		return
+
+	if _fleeing:
+		# Run directly away from the player
+		# If player is to the LEFT (player.x < self.x), move RIGHT (+1), and vice-versa
+		var away := 1.0 if player.global_position.x < global_position.x else -1.0
+		velocity.x = away * flee_speed
+	else:
+		var dist := global_position.distance_to(player.global_position)
+		if dist > bomb_range:
+			# Walk toward the player
+			var toward := -1.0 if player.global_position.x < global_position.x else 1.0
+			velocity.x = toward * approach_speed
+		elif _can_bomb:
+			# Close enough — plant and flee
+			velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
+			_plant_bomb()
+		else:
+			# On cooldown — just stand still
+			velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
+
+	move_and_slide()
+
+
+func _plant_bomb() -> void:
+	_can_bomb = false
+	_fleeing  = false  # stay still while planting
+	velocity  = Vector2.ZERO
+	_sprite.play("Dropping")
+
+	# Wait for the throw animation to play through
+	await _sprite.animation_finished
+
+	if not is_instance_valid(self):
+		return
+
+	# Spawn the bomb after the animation finishes
+	var bomb := BOMB_SCENE.instantiate()
+	get_parent().add_child(bomb)
+	bomb.global_position = global_position
+
+	# Now flee away
+	_fleeing = true
+	_sprite.play("enemy")
+
+	await get_tree().create_timer(flee_duration).timeout
+	if not is_instance_valid(self):
+		return
+	_fleeing = false
+
+	await get_tree().create_timer(bomb_cooldown).timeout
+	if is_instance_valid(self):
+		_can_bomb = true
+
+
+func apply_knockback(direction: Vector2, strength: float) -> void:
+	is_being_knocked = true
+	velocity = Vector2.ZERO
+	if _knockback_tween and _knockback_tween.is_valid():
+		_knockback_tween.kill()
+	var start_y  : float = position.y
+	var target_x : float = position.x + direction.x * strength   # <<< KNOCKBACK DISTANCE: strength × direction = pixels sideways
+	var peak_y   : float = position.y - strength * 0.4           # <<< KNOCKBACK ARC HEIGHT: strength × 0.4 = pixels upward
+	_knockback_tween = create_tween().set_parallel(true)
+	_knockback_tween.tween_property(self, "position:x", target_x, 0.1)  # <<< KNOCKBACK SPEED: 0.1s sideways slide
+	_knockback_tween.tween_property(self, "position:y", peak_y, 0.06).set_ease(Tween.EASE_OUT)  # <<< ARC UP: 0.06s rise
+	_knockback_tween.chain().tween_property(self, "position:y", start_y, 0.1)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)  # <<< FALL DOWN: 0.1s drop
+	_knockback_tween.chain().tween_callback(_end_knockback)  # <<< RECOVERY: ~0.16s total
+
+
+func _end_knockback() -> void:
+	is_being_knocked = false
+	velocity = Vector2.ZERO
