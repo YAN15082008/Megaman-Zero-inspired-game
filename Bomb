@@ -1,0 +1,90 @@
+extends CharacterBody2D
+# Bomb planted by the Bomber.
+# Chases the player until the fuse runs out, then spawns an Explosion in place.
+# Touching the player's hurtbox or being hit by scythe/pogo also detonates it early.
+# The bomb itself is NOT in "inimigos" — only the Explosion deals damage.
+
+const GRAVITY        := 1200.0
+const MAX_FALL_SPEED := 800.0
+
+@export var chase_speed  := 350.0  # px/s toward the player while chasing
+@export var fuse_delay   := 0.5    # seconds before starting to chase
+@export var fuse_time    := 4.0    # seconds until it explodes on its own
+
+const EXPLOSION_SCENE := preload("res://CENAS/Inimigo/Tipos/Bomba/explosion.tscn")
+
+@onready var sprite      : AnimatedSprite2D = $AnimatedSprite2D
+@onready var body_col    : CollisionShape2D = $BodyCollision
+@onready var contact_col : CollisionShape2D = $ContactArea/ContactShape
+
+var _exploded := false
+var _chasing  := false
+var _player   : Node2D
+
+
+func _ready() -> void:
+	sprite.play("idle")
+	_player = get_tree().get_first_node_in_group("player")
+
+	# Brief pause so the bomber has time to run, then start chasing + flashing
+	await get_tree().create_timer(fuse_delay).timeout
+	if not is_instance_valid(self):
+		return
+	_chasing = true
+	sprite.play("running")
+	_start_flash()
+
+	# Main fuse — explodes automatically when this runs out
+	await get_tree().create_timer(fuse_time).timeout
+	if is_instance_valid(self):
+		_explode()
+
+
+func _physics_process(delta: float) -> void:
+	if _exploded:
+		return
+
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+		velocity.y = minf(velocity.y, MAX_FALL_SPEED)
+
+	if _chasing and is_instance_valid(_player):
+		var dir := (_player.global_position - global_position).normalized()
+		velocity.x = dir.x * chase_speed
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+
+	move_and_slide()
+
+	# Flip sprite based on movement direction
+	if absf(velocity.x) > 10.0:
+		sprite.flip_h = velocity.x > 0.0
+
+
+func _start_flash() -> void:
+	var t := create_tween()
+	t.set_loops(999)
+	t.tween_property(sprite, "modulate:a", 0.15, 0.08)
+	t.tween_property(sprite, "modulate:a", 1.0, 0.08)
+
+
+# Player walks into bomb, or attacks it — both detonate early
+func _on_contact_area_entered(area: Area2D) -> void:
+	if _exploded:
+		return
+	if area.is_in_group("hurtbox") or area.is_in_group("scythe") or area.is_in_group("pogo"):
+		_explode()
+
+
+func _explode() -> void:
+	if _exploded:
+		return
+	_exploded = true
+	_chasing  = false
+
+	# Spawn the explosion at exactly this position, as a sibling in the scene
+	var exp := EXPLOSION_SCENE.instantiate()
+	get_parent().add_child(exp)
+	exp.global_position = global_position
+
+	queue_free()
