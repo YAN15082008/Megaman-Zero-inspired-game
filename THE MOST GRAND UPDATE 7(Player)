@@ -1,0 +1,566 @@
+#The most changes of all time. So prepare yourself cause it's alot. I won't type all the things i changed because it would fill too much in the code here.
+
+extends CharacterBody2D
+
+# Flips the sprite when walking left
+const SPEED = 500.0
+const JUMP_VELOCITY = -600.0
+var jump_count = 0
+var COYOTE_TIME = 0.12   # ~120ms, not 1 second
+var coyote = 0
+var attack = false
+@onready var animation_player: AnimationPlayer = $AnimationPlayer
+@onready var dashtimer: Timer = $Dashtimer
+@onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+var was_on_floor := true
+@onready var original_scale = sprite.scale
+const DUST_SCENE = preload("res://CENAS/fumaça/dust.tscn")
+@onready var collision_shape_2d: CollisionShape2D = $"Collision shape"
+@export var max_hp := 100
+var hp = max_hp
+var knockback := Vector2.ZERO
+@export var DASH_SPEED := 1200.0
+@export var CRAWL_DASH_SPEED := 600.0  # slower dash when crawling
+@export var crawl_afterimage_color := Color(0.5, 0.6, 0.8, 0.75)  # blue-gray for crawl dash
+@export var DASH_ACCEL := 7000.0  # how fast the ground dash ramps up to DASH_SPEED
+@export var DASH_DURATION := 0.2
+@export var DASH_FRICTION := 4000.0  # how fast the skid dies once the dash ends
+var is_dashing := false
+var is_crawl_dashing := false
+var dash_direction := 0.0
+var dash_recovering := false  # true during the brief momentum skid after a ground dash ends
+@onready var hurtbox: CollisionShape2D = $Hurtbox/Hurtbox
+var is_invincible := false
+@export var invincibility_duration := 1.0
+var combo_step := 0
+var combo_queued := false
+const COMBO_DAMAGE := [10, 15, 25]
+@export var damage_multiplier := 1.0  # <<< STRENGTH ITEM: multiplies all damage (combo, pogo, slash). Pickup increases this.
+@onready var attack_hitbox: Area2D = $hitbox
+var hit_stop_id := 0
+const JUMP_FORCE := -420.0
+const DOUBLE_JUMP_VELOCITY := -750.0
+const GRAVITY := 1800.0
+const FALL_GRAVITY := 3000.0
+const MAX_JUMPS := 2
+var was_dashing := false
+var _was_crawling := false
+var _original_hurtbox_shape_size := Vector2.INF  # cached in _ready
+var _original_hurtbox_pos := Vector2.ZERO         # cached in _ready
+
+
+# Air dash (X2-style): one use per airtime, resets on landing
+const MAX_AIR_DASHES := 1
+var air_dashes_used := 0
+
+# True only while airborne from a dash-jump — holds full dash speed with
+# zero decay until you land or reverse direction. Regular jumps never set this.
+var dash_jump_active := false
+
+# --- Pogo attacks (separate down-stab vs air slash; both bounce off enemies) ---
+@onready var pogo_hitbox: Area2D = $pogo_hitbox
+@onready var down_pogo_shape: CollisionShape2D = $"pogo_hitbox/Down attack"
+@onready var slash_pogo_shape: CollisionShape2D = $"pogo_hitbox/Slash attack"
+@export var POGO_BOUNCE_VELOCITY := -750.0
+@export var SLASH_POGO_BOUNCE_VELOCITY := -900.0  # stronger bounce than the down-stab
+const POGO_DAMAGE := 15
+const SLASH_POGO_DAMAGE := 20
+const SLASH_HITBOX_X := 24.0
+var pogo_active := false  # true during either pogo attack's active window
+var active_pogo_bounce_velocity := -750.0  # set per-attack, read by on_pogo_hit()
+
+# --- Dash afterimage (red ghost trail, only while is_dashing) ---
+@export var afterimage_interval := 0.03   # seconds between ghosts
+@export var afterimage_lifetime := 0.18  # how long each ghost fades out
+@export var afterimage_color := Color(1.0, 0.12, 0.12, 0.75)
+var _afterimage_cooldown := 0.0
+
+
+func _ready() -> void:
+	add_to_group("player")
+	print("PLAYER READY at pos=", position)
+	dashtimer.one_shot = true
+	attack_hitbox.area_entered.connect(_on_attack_hitbox_hit)
+	sprite.animation_finished.connect(_on_sprite_animation_finished)
+	if hurtbox.shape is RectangleShape2D:
+		_original_hurtbox_shape_size = hurtbox.shape.size
+		_original_hurtbox_pos = hurtbox.position
+
+
+func _physics_process(delta: float) -> void:
+
+	velocity += knockback
+	knockback = knockback.move_toward(Vector2.ZERO, 1200.0 * delta)
+
+	# --- Gravity (skipped entirely during a ground dash, X-style) ---
+	var ground_dash := is_dashing and is_on_floor()
+	if not is_on_floor() and not is_dashing:
+		velocity.y += (FALL_GRAVITY if velocity.y > 0 else GRAVITY) * delta
+	elif ground_dash:
+		velocity.y = 0.0
+
+	if is_on_floor():
+		coyote = COYOTE_TIME
+		jump_count = 0
+		air_dashes_used = 0       # air dash resets on landing
+		dash_jump_active = false  # momentum hold ends the moment you land
+	else:
+		coyote -= delta
+
+	if not was_on_floor and is_on_floor():
+		_on_land()
+	was_on_floor = is_on_floor()
+
+	# Read direction BEFORE jump handling, since dash-jump cancellation
+	# needs to know if you're holding the opposite way at that instant.
+	var direction := Input.get_axis("move_left", "move_right")
+
+	# --- Jumping ---
+	if Input.is_action_just_pressed("jump"):
+		dash_recovering = false
+
+		if is_dashing:
+			is_dashing = false
+			is_crawl_dashing = false
+			dashtimer.stop()
+
+			if direction != 0 and sign(direction) != sign(dash_direction):
+				# Holding the opposite direction at the moment of the jump:
+				# snap immediately instead of letting move_toward slowly
+				# fight its way back down from full dash speed.
+				velocity.x = direction * SPEED
+			else:
+				# No opposite input: enter dash-jump momentum hold.
+				# velocity.x is already dash_direction * DASH_SPEED, and it
+				# will NOT decay each frame while this stays true — only a
+				# reversal or landing ends it. Regular jumps never touch this.
+				dash_jump_active = true
+
+		if coyote > 0:
+			coyote = 0
+			jump_count = 1
+			velocity.y = JUMP_VELOCITY
+		elif jump_count < MAX_JUMPS:
+			jump_count += 1
+			velocity.y = DOUBLE_JUMP_VELOCITY
+			
+	
+	if Input.is_action_just_released("jump") and velocity.y < 0:
+		velocity.y *= 0.45
+
+	if direction != 0:
+		sprite.flip_h = direction < 0
+		attack_hitbox.position.x = -100 if direction < 0 else 10
+		slash_pogo_shape.position.x = -SLASH_HITBOX_X if direction < 0 else SLASH_HITBOX_X
+
+	# --- Dash input: locks direction once, doesn't re-check every frame ---
+	var dash_pressed := Input.is_action_just_pressed("Dash")
+	var can_dash := !is_dashing and (is_on_floor() or air_dashes_used < MAX_AIR_DASHES)
+
+	if dash_pressed and direction != 0 and can_dash:
+		is_dashing = true
+		is_crawl_dashing = is_on_floor() and Input.is_action_pressed("move_down")
+		dash_direction = direction
+		dash_recovering = false
+		dashtimer.start(DASH_DURATION)
+		if not is_on_floor():
+			air_dashes_used += 1
+
+		# Cancel any current attack so dash always takes priority
+		attack = false
+		pogo_active = false
+		pogo_hitbox.monitoring = false
+
+	# --- Ground dash: releasing the button ends it early (X-style), then
+	# momentum carries you into the recovery skid below instead of stopping cold
+	if is_dashing and is_on_floor() and not Input.is_action_pressed("Dash"):
+		is_dashing = false
+		is_crawl_dashing = false
+		dashtimer.stop()
+		dash_recovering = true
+
+	# --- Ground dash: instant cancel if you press the opposite direction ---
+	if is_dashing and is_on_floor() and direction != 0 and sign(direction) != sign(dash_direction):
+		is_dashing = false
+		is_crawl_dashing = false
+		dashtimer.stop()
+
+	# Add this check in _physics_process where horizontal velocity is resolved:
+
+	var is_knocked_back := knockback.length() > 10.0
+
+	if dash_jump_active and direction != 0 and sign(direction) != sign(dash_direction):
+		velocity.x = direction * SPEED
+		dash_jump_active = false
+	elif dash_jump_active:
+		velocity.x = dash_direction * DASH_SPEED
+		
+	elif is_dashing:
+		var dash_speed := CRAWL_DASH_SPEED if is_crawl_dashing else DASH_SPEED
+		if is_on_floor():
+			velocity.x = move_toward(velocity.x, dash_direction * dash_speed, DASH_ACCEL * delta)
+		else:
+			velocity.x = dash_direction * dash_speed
+	elif dash_recovering:
+		var target_x = direction * SPEED
+		velocity.x = move_toward(velocity.x, target_x, DASH_FRICTION * delta)
+		if is_equal_approx(velocity.x, target_x):
+			dash_recovering = false
+	elif is_knocked_back:
+		pass  # don't touch velocity.x — let knockback carry the player
+	elif attack and not pogo_active:
+		velocity.x = 0
+	else:
+		velocity.x = direction * SPEED
+
+
+	# --- Attack (blocked while dashing) ---
+	if Input.is_action_just_pressed("Attack") and not is_dashing:
+		if not attack:
+			# Air + hold down = downward pogo (separate from slash)
+			if not is_on_floor() and Input.is_action_pressed("move_down"):
+				start_pogo_attack()
+			# Air + attack = slashing pogo
+			elif not is_on_floor():
+				start_slash_attack()
+			else:
+				start_combo()
+		elif attack:
+			combo_queued = true
+
+	# --- Animation ---
+	var is_crawling := is_on_floor() and Input.is_action_pressed("move_down")
+	
+	if attack:
+		pass  # handled by AnimationPlayer
+	elif sprite.animation == "hurt" and sprite.is_playing():
+		pass  # let hurt play out -- next frame will resume idle/run fully
+	elif is_dashing:
+		if is_crawl_dashing:
+			sprite.play("crawl walk")
+		else:
+			sprite.play("run")
+	elif is_crawling and direction:
+		sprite.play("crawl walk")
+	elif is_crawling:
+		if not _was_crawling:
+			sprite.play("crawl transition")
+		elif sprite.animation != "crawl transition":
+			sprite.play("crawl")
+	elif direction and not attack:
+		sprite.play("run")
+	elif not attack:
+		sprite.play("idle")
+	_was_crawling = is_crawling
+
+	# --- Shrink hurtbox to half height when crawling ---
+	if _original_hurtbox_shape_size != Vector2.INF:
+		var hurtbox_shape := hurtbox.shape as RectangleShape2D
+		if is_crawling:
+			hurtbox_shape.size = Vector2(_original_hurtbox_shape_size.x, _original_hurtbox_shape_size.y * 0.5)
+			hurtbox.position.y = (
+				_original_hurtbox_pos.y
+				+ _original_hurtbox_shape_size.y * 0.25
+			)
+		else:
+			hurtbox_shape.size = _original_hurtbox_shape_size
+			hurtbox.position.y = _original_hurtbox_pos.y
+
+	# --- Red afterimages only while dashing ---
+	if is_dashing:
+		_afterimage_cooldown -= delta
+		if _afterimage_cooldown <= 0.0:
+			_afterimage_cooldown = afterimage_interval
+			_spawn_dash_afterimage()
+	else:
+		_afterimage_cooldown = 0.0
+
+# --- Dash squish and stretch (skip during crawl dash) ---
+	if is_crawl_dashing:
+		sprite.scale = original_scale
+	elif is_dashing and not was_dashing:
+		sprite.scale = original_scale * Vector2(1.4, 0.6)
+	elif not is_dashing and was_dashing:
+		sprite.scale = original_scale
+	was_dashing = is_dashing
+
+	move_and_slide()
+
+
+func _on_dashtimer_timeout() -> void:
+	is_dashing = false
+	is_crawl_dashing = false
+	if is_on_floor():
+		dash_recovering = true
+
+
+# Squish and stretch the player and adds a little dust on his feet when he lands
+func _on_land():
+	var dust = DUST_SCENE.instantiate()
+	get_parent().add_child(dust)
+	dust.global_position = global_position + Vector2(0, 30)
+
+	sprite.scale = original_scale * Vector2(1.3, 0.7)
+
+	var t = create_tween()
+	t.tween_property(sprite, "scale", original_scale, 0.3).set_trans(Tween.TRANS_ELASTIC)
+
+
+# Checks that attack comes back to false when animation ends
+func _on_animation_player_animation_finished(anim_name: StringName) -> void:
+	if anim_name == "attack":
+		attack = false
+
+
+# When a sprite animation finishes (non-looping ones)
+func _on_sprite_animation_finished() -> void:
+	match sprite.animation:
+		"crawl transition":
+			sprite.play("crawl")
+		"hurt":
+			# Next physics frame will pick idle/run based on state
+			pass
+
+
+# Knockback when hit
+func take_damage(amount: int, knockback_dir: Vector2 = Vector2.ZERO) -> void:
+	if pogo_active or is_invincible:
+		return
+
+	hp -= amount
+	print("HP: ", hp)
+	if knockback_dir != Vector2.ZERO:
+		var kb_x := signf(knockback_dir.x)
+		if kb_x == 0.0:
+			kb_x = -1.0
+		var kb_y := minf(knockback_dir.y * 250.0, 0.0)  # never push upward
+		knockback = Vector2(kb_x * 250.0, kb_y)
+	flash_white()
+	sprite.play("hurt")
+	_start_invincibility()
+
+	if hp <= 0:
+		die()
+
+
+func _on_hurtbox_area_entered(area: Area2D) -> void:
+	if pogo_active or is_invincible:
+		return
+
+	if area.is_in_group("inimigos"):
+		var dir := (global_position - area.global_position).normalized()
+		var dmg: int = int(area.get_meta("contact_damage")) if area.has_meta("contact_damage") else 10
+		take_damage(dmg, dir)
+	if area.is_in_group("explosao"):
+		var dmg: int = area.damage if "damage" in area else 20
+		var dir := (global_position - area.global_position).normalized()
+		take_damage(dmg, dir)
+		return
+
+
+func _start_invincibility() -> void:
+	is_invincible = true
+	
+	# Flash effect during invincibility
+	var tween := create_tween()
+	tween.set_loops(5)
+	tween.tween_property(sprite, "modulate:a", 0.3, 0.08)
+	tween.tween_property(sprite, "modulate:a", 1.0, 0.08)
+	tween.tween_callback(_end_invincibility)
+
+
+func _end_invincibility() -> void:
+	is_invincible = false
+	sprite.modulate.a = 1.0
+
+
+
+
+func die() -> void:
+	queue_free()
+
+
+# Flashes white when hit
+func flash_white() -> void:
+	var tween := create_tween()
+	sprite.modulate = Color.WHITE * 3.0
+	tween.tween_interval(0.12)
+	tween.tween_property(sprite, "modulate", Color.WHITE, 0.12)
+
+
+func _on_attack_hitbox_hit(area: Area2D) -> void:
+	# Only process enemies that have a hurtbox with take_damage
+	if not area.has_method("take_damage"):
+		return
+	
+	# Get the attack type and damage
+	var attack_type = attack_hitbox.get_meta("attack_type", "unknown")
+	var damage = attack_hitbox.get_meta("damage", 10)
+	
+	# Only apply damage to Shielder for "down" and "slash"
+	if attack_type == "down" or attack_type == "slash":
+		# Apply damage only to Shielder
+		if area.is_in_group("shielder"):
+			area.take_damage(damage)
+		# Apply knockback regardless of attack type
+		var kb_dir := (global_position - area.global_position).normalized()
+		var kbx := signf(kb_dir.x)
+		if kbx == 0.0:
+			kbx = -1.0
+		knockback = Vector2(kbx * 500.0, minf(kb_dir.y * 500.0, 0.0))
+		flash_white()
+		_start_invincibility()
+
+	# Apply the hit stop from combo animation
+	hit_stop_from_combo()
+
+
+func start_combo() -> void:
+	attack = true
+	combo_step = 1
+	
+	while combo_step <= 3:
+		combo_queued = false
+		
+		attack_hitbox.set_meta("damage", int(COMBO_DAMAGE[combo_step - 1] * damage_multiplier))
+		attack_hitbox.set_meta("attack_type", "combo")
+		
+		# Enable the right collision shape for this combo step
+		var shape: CollisionShape2D
+		match combo_step:
+			1: shape = $"hitbox/attack1"
+			2: shape = $"hitbox/attack2"
+			3: shape = $"hitbox/attack3"
+		
+		shape.set_deferred("disabled", false)
+		
+		animation_player.play("attack_" + str(combo_step))
+		await animation_player.animation_finished
+		
+		shape.set_deferred("disabled", true)
+		
+		if combo_queued and combo_step < 3:
+			combo_step += 1
+		else:
+			break
+			
+	attack = false
+	combo_step = 0
+
+
+func hit_stop_from_combo() -> void:
+	var seconds := 0.05 # Attack 1 = 1/20 second
+	
+	match combo_step:
+		1:
+			seconds = 0.10
+		2:
+			seconds = 0.20 # Attack 2 = 1/5 second
+		3:
+			seconds = 0.25 # Attack 3 = 1/4 second
+	
+	hit_stop(seconds)
+
+
+func hit_stop(seconds: float) -> void:
+	hit_stop_id += 1
+	var this_stop := hit_stop_id
+	
+	Engine.time_scale = 0.05
+	await get_tree().create_timer(seconds, true, false, true).timeout
+	
+	if this_stop == hit_stop_id:
+		Engine.time_scale = 1.0
+
+
+func _begin_pogo_hitbox(damage: int) -> void:
+	pogo_active = true
+	pogo_hitbox.set_meta("damage", damage)
+	pogo_hitbox.collision_layer = 2
+	pogo_hitbox.collision_mask = 2
+	pogo_hitbox.monitoring = true
+	pogo_hitbox.monitorable = true
+
+
+func _end_pogo_hitbox() -> void:
+	pogo_hitbox.monitoring = false
+	pogo_active = false
+
+
+func start_pogo_attack() -> void:
+	attack = true
+	slash_pogo_shape.disabled = true
+	active_pogo_bounce_velocity = POGO_BOUNCE_VELOCITY
+	_begin_pogo_hitbox(int(POGO_DAMAGE * damage_multiplier))
+	sprite.play("pogo_attack")
+	animation_player.play("pogo_attack")
+	
+	await animation_player.animation_finished
+	
+	_end_pogo_hitbox()
+	attack = false
+	# Reset attack type
+	attack_hitbox.set_meta("attack_type", "unknown")
+
+
+func start_slash_attack() -> void:
+	attack = true
+	down_pogo_shape.disabled = true
+	active_pogo_bounce_velocity = SLASH_POGO_BOUNCE_VELOCITY
+	_begin_pogo_hitbox(int(SLASH_POGO_DAMAGE * damage_multiplier))
+	sprite.play("Slash attack")
+	animation_player.play("Slash_attack")
+	
+	await animation_player.animation_finished
+	
+	_end_pogo_hitbox()
+	attack = false
+	# Reset attack type
+	attack_hitbox.set_meta("attack_type", "unknown")
+
+
+# Called by enemy hurtbox when the pogo hitbox connects (same path as scythe damage).
+func on_pogo_hit() -> void:
+	if not pogo_active:
+		return
+	
+	velocity.y = active_pogo_bounce_velocity
+	jump_count = 0
+	air_dashes_used = 0
+	dash_jump_active = false
+	hit_stop(0.07)
+
+
+# Frozen red copy of the current sprite frame; fades out and frees itself.
+func _spawn_dash_afterimage() -> void:
+	if sprite.sprite_frames == null:
+		return
+	
+	var tex := sprite.sprite_frames.get_frame_texture(sprite.animation, sprite.frame)
+	if tex == null:
+		return
+	
+	var ghost := Sprite2D.new()
+	ghost.texture = tex
+	ghost.global_position = sprite.global_position
+	ghost.global_scale = sprite.global_scale
+	ghost.global_rotation = sprite.global_rotation
+	ghost.flip_h = sprite.flip_h
+	ghost.flip_v = sprite.flip_v
+	ghost.offset = sprite.offset
+	ghost.centered = sprite.centered
+	ghost.z_index = sprite.z_index - 1
+	ghost.modulate = crawl_afterimage_color if is_crawl_dashing else afterimage_color
+	# Sit behind the player in the world tree, not as a child (so it doesn't move with you)
+	get_parent().add_child(ghost)
+	ghost.global_position = sprite.global_position
+	
+	var t := ghost.create_tween()
+	var start_color := crawl_afterimage_color if is_crawl_dashing else afterimage_color
+	t.tween_property(
+		ghost,
+		"modulate",
+		Color(start_color.r, start_color.g, start_color.b, 0.0),
+		afterimage_lifetime
+	)
+	t.tween_callback(ghost.queue_free)
